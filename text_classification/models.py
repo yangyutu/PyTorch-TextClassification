@@ -6,6 +6,10 @@ import pytorch_lightning as pl
 from torchmetrics import Accuracy
 
 
+# reference
+# https://github.com/bentrevett/pytorch-sentiment-analysis
+
+
 class LogisticBOWModel(nn.Module):
     def __init__(self, config: Dict):
         super().__init__()
@@ -22,7 +26,32 @@ class LogisticBOWModel(nn.Module):
         return x
 
 
-class WordLevelCNN(nn.Module):
+class BagEmbeddingModel(nn.Module):
+    def __init__(self, vocab_size, embedding_dim, output_dim, pad_idx):
+        super().__init__()
+
+        self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=pad_idx)
+
+        self.fc = nn.Linear(embedding_dim, output_dim)
+
+    def forward(self, x):
+        # ids has size of [batch size, seq len]
+
+        ids, length = x
+
+        embeddings = self.embedding(ids)
+
+        # embeddings = [batch size, seq_len,  emb dim]
+
+        # average over seq_len axis
+        pooled = F.avg_pool2d(embeddings, (embeddings.shape[1], 1)).squeeze(1)
+
+        # pooled = [batch size, embedding_dim]
+
+        return self.fc(pooled)
+
+
+class TokenLevelCNN2D(nn.Module):
     def __init__(
         self,
         vocab_size,
@@ -60,9 +89,11 @@ class WordLevelCNN(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        # x has size of [batch size, seq len]
+        # ids has size of [batch size, seq len]
 
-        embeddings = self.embedding(x)
+        ids, length = x
+
+        embeddings = self.embedding(ids)
 
         # embeddings = [batch size, sent len, emb dim]
 
@@ -93,7 +124,67 @@ class WordLevelCNN(nn.Module):
         return self.fc(cat)
 
 
-class WordLevelLSTM(nn.Module):
+class TokenLevelCNN1D(nn.Module):
+    def __init__(
+        self,
+        vocab_size,
+        embedding_dim,
+        n_filters,
+        filter_sizes,
+        output_dim,
+        dropout,
+        pad_idx,
+    ):
+        super().__init__()
+
+        self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=pad_idx)
+
+        self.convs = nn.ModuleList(
+            [
+                nn.Conv1d(
+                    in_channels=embedding_dim,  # each embedding dim is a feature channel
+                    out_channels=n_filters,
+                    kernel_size=fs,
+                )
+                for fs in filter_sizes
+            ]
+        )
+
+        self.fc = nn.Linear(len(filter_sizes) * n_filters, output_dim)
+
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        # ids has size of [batch size, seq len]
+
+        ids, length = x
+
+        embeddings = self.embedding(ids)
+
+        # embeddings = [batch size, sent len, emb dim]
+
+        embeddings = embeddings.permute(0, 2, 1)
+
+        conved = [F.relu(conv(embeddings)) for conv in self.convs]
+
+        # conved_n = [batch size, n_filters, sent len - filter_sizes[n] + 1]
+
+        # conved_n = [batch size, n_filters, sent len - filter_sizes[n] + 1]
+
+        pooled = [F.max_pool1d(conv, conv.shape[2]).squeeze(2) for conv in conved]
+
+        # pooling across the last axis
+
+        # pooled_n = [batch size, n_filters]
+
+        cat = self.dropout(torch.cat((pooled), dim=1))
+
+        # cat = [batch size, n_filters * len(filter_sizes)]
+
+        return self.fc(cat)
+
+
+class TokenLevelLSTM(nn.Module):
     def __init__(
         self,
         vocab_size,
@@ -102,22 +193,22 @@ class WordLevelLSTM(nn.Module):
         output_dim,
         n_layers,
         bidirectional,
-        dropout_rate,
-        pad_index,
+        dropout,
+        pad_idx,
     ):
         super().__init__()
-        self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=pad_index)
+        self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=pad_idx)
         self.lstm = nn.LSTM(
             embedding_dim,
             hidden_dim,
             n_layers,
             bidirectional=bidirectional,
-            dropout=dropout_rate,
+            dropout=dropout,
             batch_first=True,
         )
 
         self.fc = nn.Linear(hidden_dim * 2 if bidirectional else hidden_dim, output_dim)
-        self.dropout = nn.Dropout(dropout_rate)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         # ids = [batch size, seq_len]
@@ -126,13 +217,14 @@ class WordLevelLSTM(nn.Module):
         embeddings = self.embedding(ids)
         embeddings = self.dropout(embeddings)
         packed_embedded = nn.utils.rnn.pack_padded_sequence(
-            embeddings, length, batch_first=True, enforce_sorted=False
+            embeddings, length.cpu(), batch_first=True, enforce_sorted=False
         )
 
         packed_output, (hidden, cell) = self.lstm(packed_embedded)
         # hidden = [n layers * n directions, batch size, hidden dim]
         # cell = [n layers * n directions, batch size, hidden dim]
-        output, output_length = nn.utils.rnn.pad_packed_sequence(packed_output)
+
+        # output, output_length = nn.utils.rnn.pad_packed_sequence(packed_output)
 
         if self.lstm.bidirectional:
             hidden = self.dropout(torch.cat([hidden[-1], hidden[-2]], dim=-1))
