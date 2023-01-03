@@ -1,9 +1,12 @@
-from models import CharacterLevelCNN, GenericModel, LogisticBOWModel
+from typing import Text
+from models.text_classifier import CharacterLevelCNN, TextClassifier, LogisticBOWModel
 from data_loader import BOWDataset
 from torch.utils.data import random_split, DataLoader
 from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+from pytorch_lightning.callbacks.progress import TQDMProgressBar
+from pytorch_lightning.loggers.wandb import WandbLogger
 
 dataset_name = "AG_NEWS"
 
@@ -46,7 +49,7 @@ config["num_classes"] = num_classes
 config["most_frequent_words"] = most_frequent_words
 config["lr"] = 0.001
 model_BOW = LogisticBOWModel(config)
-model = GenericModel(config, model=model_BOW)
+model = TextClassifier(config, model=model_BOW)
 
 model_name = f"BOW_{ngram_range}_idf_{tf_idf}"
 
@@ -57,24 +60,32 @@ checkpoint_callback = ModelCheckpoint(
     save_top_k=3,
     mode="min",
 )
+lr_monitor = LearningRateMonitor(logging_interval="step")
+
+project_name = "text_classification"
+wandb_logger = WandbLogger(
+    project=project_name,  # group runs in "MNIST" project
+    log_model="all",
+    save_dir="./results/logs/",
+)
 
 trainer = Trainer(
-    gpus=1,
-    auto_select_gpus=True,
+    accelerator="gpu",
+    devices=1,
     max_epochs=3,
-    progress_bar_refresh_rate=20,  # disable progress bar by setting to 0
-    logger=TensorBoardLogger("lightning_logs/", name=f"{model_name}_{dataset_name}"),
-    callbacks=[checkpoint_callback],
+    logger=wandb_logger,
+    callbacks=[TQDMProgressBar(refresh_rate=20), checkpoint_callback],
 )
 
 
 print(dataset_name)
 
 trainer.fit(
-    model, train_dataloaders=train_dataset_loader, val_dataloaders=val_dataset_loader,
+    model,
+    train_dataloaders=train_dataset_loader,
+    val_dataloaders=val_dataset_loader,
 )
 
 # ckpt = "/home/ubuntu/MLData/work/Repos/pytorch-examples/text_classification/lightning_logs/version_5/checkpoints/epoch=199-step=168799.ckpt"
 # load_model = CharacterLevelCNN.load_from_checkpoint(ckpt, config=config)
 trainer.test(model, dataloaders=test_dataset_loader, ckpt_path="best")
-

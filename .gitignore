@@ -1,0 +1,5 @@
+experiments/
+debug/
+precomputed_embeddings/
+*.tsv
+*.log
