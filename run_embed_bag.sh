@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 export CUDA_VISIBLE_DEVICES="0"
 
-dataset_names=('AG_NEWS' 'AmazonReviewFull' 'AmazonReviewPolarity' 'SogouNews')
-dataset_names=('YelpReviewFull' 'YahooAnswers')
+dataset_names=('AG_NEWS' 'YelpReviewFull' 'YelpReviewPolarity' 'YahooAnswers')
 
 model_name=embedding_bag
 for name in "${dataset_names[@]}"

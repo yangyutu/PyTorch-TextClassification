@@ -5,7 +5,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.callbacks.progress import TQDMProgressBar
 from pytorch_lightning.loggers.wandb import WandbLogger
 
-from datasets.text_data import TokenizedTextDataModule
+from data_utils.text_data import TokenizedTextDataModule
 from models.embedding_bag import EmbeddingBagModel
 from models.text_classifier import TextClassifier
 
