@@ -9,7 +9,7 @@ do
     python text_classification/run_embed_bag.py \
     --dataset_name ${name} \
     --gpus 1 \
-    --max_epochs 3 \
+    --max_epochs 10 \
     --lr 1e-3 \
     --batch_size 256 \
     --num_workers 16 \

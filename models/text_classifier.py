@@ -14,11 +14,15 @@ class TextClassifier(pl.LightningModule):
         num_classes = config["num_classes"]
 
         self.model = model
+        # if hasattr(self.model, "device"):
+        #     self.model.device = self.device
+        #     print(f"set model device to {self.device}")
         self.loss_fn = nn.CrossEntropyLoss()
 
         self.train_accuracy = Accuracy(num_classes=num_classes)
         self.val_accuracy = Accuracy(num_classes=num_classes)
         self.test_accuracy = Accuracy(num_classes=num_classes)
+        self.save_hyperparameters()
 
     def forward(self, x):
         x = self.model(x)
@@ -66,22 +70,3 @@ class TextClassifier(pl.LightningModule):
             "val_acc_epoch", self.val_accuracy.compute(), prog_bar=True, logger=True
         )
         self.val_accuracy.reset()
-
-
-if __name__ == "__main__":
-    alphabet = "abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:'\"/\\|_@#$%^&*~`+ =<>()[]{}"
-    config = {}
-
-    config["num_classes"] = 3
-    config["num_characters"] = len(alphabet) + 1
-    config["max_seq_length"] = 1014
-    config["dropout_input"] = 0.1
-    config["most_frequent_words"] = 50000
-
-    model = CharacterLevelCNN(config)
-
-    print(model)
-
-    model2 = LogisticBOWModel(config)
-
-    print(model2)
