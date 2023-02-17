@@ -19,9 +19,9 @@ class TextClassifier(pl.LightningModule):
         #     print(f"set model device to {self.device}")
         self.loss_fn = nn.CrossEntropyLoss()
 
-        self.train_accuracy = Accuracy(num_classes=num_classes)
-        self.val_accuracy = Accuracy(num_classes=num_classes)
-        self.test_accuracy = Accuracy(num_classes=num_classes)
+        self.train_accuracy = Accuracy(num_classes=num_classes, task="multiclass")
+        self.val_accuracy = Accuracy(num_classes=num_classes, task="multiclass")
+        self.test_accuracy = Accuracy(num_classes=num_classes, task="multiclass")
         self.save_hyperparameters()
 
     def forward(self, x):
