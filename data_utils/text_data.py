@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader, Dataset, IterableDataset
 from torchtext import datasets
 from torchtext.vocab import vocab as vocab_builder
 from tqdm import tqdm
+from transformers import AutoTokenizer
 
 
 class TextIterData(IterableDataset):
@@ -203,85 +204,6 @@ class TokenizedTextDataModule(pl.LightningDataModule):
         )
 
 
-# class TokenizedTextDataModule(pl.LightningDataModule):
-#     def __init__(
-#         self,
-#         text_data_name,
-#         vocab_min_freq: int = 1,
-#         batch_size: int = 64,
-#         num_workers: int = 8,
-#     ):
-#         super().__init__()
-
-#         self.vocab_min_freq = vocab_min_freq
-#         self.batch_size = batch_size
-#         self.num_workers = num_workers
-#         self.setup(text_data_name)
-
-#     def setup(self, text_data_name):
-
-#         self.train_data = TextData(text_data_name, "train")
-#         self.val_data = TextData(text_data_name, "test")
-
-#         self.tokenizer = torchtext.data.utils.get_tokenizer(
-#             "basic_english", language="en"
-#         )
-#         self.build_vocab_and_label()
-
-#         self.text_pipeline = lambda x: [
-#             self.vocab[token] for token in self.tokenizer(x)
-#         ]
-#         self.label_pipeline = lambda x: self.label_map[x]
-
-#     def build_vocab_and_label(self):
-
-#         self.label_set = set()
-#         counter = Counter()
-#         print("building vocabulary and label")
-#         for (line, label) in tqdm(self.train_data):
-#             counter.update(self.tokenizer(line))
-#             self.label_set.add(label)
-#         self.vocab = vocab_builder(counter, min_freq=self.vocab_min_freq)
-#         self.label_map = dict(zip(self.label_set, range(len(self.label_set))))
-#         self.padding_value = self.vocab_size
-
-#     @property
-#     def vocab_size(self):
-#         return len(self.vocab)
-
-#     @property
-#     def label_size(self):
-#         return len(self.label_set)
-
-#     def get_collate(self):
-
-#         return partial(
-#             collate_and_pad_batch,
-#             text_pipeline=self.text_pipeline,
-#             label_pipeline=self.label_pipeline,
-#             padding_value=self.padding_value,
-#         )
-
-#     def train_dataloader(self):
-
-#         return DataLoader(
-#             self.train_data,
-#             batch_size=self.batch_size,
-#             num_workers=self.num_workers,
-#             shuffle=True,
-#             collate_fn=self.get_collate(),
-#         )
-
-#     def val_dataloader(self):
-#         return DataLoader(
-#             self.train_data,
-#             batch_size=self.batch_size,
-#             num_workers=self.num_workers,
-#             shuffle=False,
-#             collate_fn=self.get_collate(),
-#         )
-
-
 class TextDataModule(pl.LightningDataModule):
     """This data class aims to produce training and validation dataloader via function
     train_dataloader() and val_dataloader().
@@ -326,6 +248,92 @@ class TextDataModule(pl.LightningDataModule):
         return partial(
             text_collate_fn,
             label_pipeline=self.label_pipeline,
+        )
+
+    def train_dataloader(self):
+
+        return DataLoader(
+            self.train_data,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            shuffle=True,
+            collate_fn=self.get_collate(),
+        )
+
+    def val_dataloader(self):
+        return DataLoader(
+            self.train_data,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            shuffle=False,
+            collate_fn=self.get_collate(),
+        )
+
+
+def text_collate_with_tokenization(data, tokenizer, label_pipeline, truncate):
+
+    texts, labels = zip(*data)
+    encoded = tokenizer(
+        list(texts),
+        return_tensors="pt",
+        max_length=truncate,
+        truncation="longest_first",
+        padding="max_length",
+    )
+    label_list = [label_pipeline(label) for label in labels]
+    return encoded, torch.tensor(label_list).long()
+
+
+class PretrainedTokenizedTextDataModule(pl.LightningDataModule):
+    """This data class aims to produce training and validation dataloader via function
+    train_dataloader() and val_dataloader().
+
+    dataloader is an iterator that produces a tuple of (a list of raw text, 1D tensor label list).
+
+    """
+
+    def __init__(
+        self,
+        text_data_name,
+        tokenizer_name,
+        truncate: int = 256,
+        batch_size: int = 64,
+        num_workers: int = 8,
+    ):
+        super().__init__()
+
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+        self.truncate = truncate
+        self.setup(text_data_name)
+
+    def setup(self, text_data_name):
+
+        self.train_data = TextData(text_data_name, "train")
+        self.val_data = TextData(text_data_name, "test")
+        self.build_vocab_and_label()
+        self.label_pipeline = lambda x: self.label_map[x]
+
+    def build_vocab_and_label(self):
+
+        self.label_set = set()
+
+        for (line, label) in self.train_data:
+            self.label_set.add(label)
+        self.label_map = dict(zip(self.label_set, range(len(self.label_set))))
+
+    @property
+    def label_size(self):
+        return len(self.label_set)
+
+    def get_collate(self):
+
+        return partial(
+            text_collate_with_tokenization,
+            tokenizer=self.tokenizer,
+            label_pipeline=self.label_pipeline,
+            truncate=self.truncate,
         )
 
     def train_dataloader(self):
@@ -449,6 +457,18 @@ def _test_text_data_module():
         break
 
 
+def _test_pretrained_tokenized_text_data_module():
+    data_module = PretrainedTokenizedTextDataModule("AG_NEWS", "bert-base-uncased", 128)
+
+    train_dataloader = data_module.train_dataloader()
+
+    print(data_module.label_size)
+
+    for batch in train_dataloader:
+        print(batch)
+        break
+
+
 def _test_ngram_text_data_module():
     data_module = NgramTextDataModule("AG_NEWS")
 
@@ -462,7 +482,8 @@ def _test_ngram_text_data_module():
 
 
 if __name__ == "__main__":
-    _test_tokenized_text_data_module(return_length=False)
-    _test_tokenized_text_data_module(return_length=True)
+    # _test_tokenized_text_data_module(return_length=False)
+    # _test_tokenized_text_data_module(return_length=True)
+    _test_pretrained_tokenized_text_data_module()
     # _test_text_data_module()
     # _test_ngram_text_data_module()

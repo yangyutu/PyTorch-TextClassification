@@ -5,12 +5,12 @@ from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.callbacks.progress import TQDMProgressBar
 from pytorch_lightning.loggers.wandb import WandbLogger
 
-from data_utils.text_data import TextDataModule
+from data_utils.text_data import PretrainedTokenizedTextDataModule
 from models.text_classifier import TextClassifier
-from models.pretrained_transformers import PretrainedBertEncoder
+from models.pretrained_transformers import PretrainedBertEncoderV2
 import os
 
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
+# os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 def main(args):
@@ -20,8 +20,12 @@ def main(args):
     dataset_name = args.dataset_name
     # dataset names should be AG_NEWS, IMDB
 
-    data_module = TextDataModule(
-        dataset_name, batch_size=args.batch_size, num_workers=args.num_workers
+    data_module = PretrainedTokenizedTextDataModule(
+        dataset_name,
+        args.pretrained_model_name,
+        args.truncate,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
     )
 
     train_dataloader = data_module.train_dataloader()
@@ -30,7 +34,7 @@ def main(args):
     config = {}
     config["num_classes"] = data_module.label_size
     config["lr"] = args.lr
-    encoder_model = PretrainedBertEncoder(
+    encoder_model = PretrainedBertEncoderV2(
         pretrained_model_name=args.pretrained_model_name,
         num_classes=data_module.label_size,
         truncate=args.truncate,
