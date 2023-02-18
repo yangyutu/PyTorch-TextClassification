@@ -9,37 +9,31 @@ import torchtext
 from sklearn.feature_extraction.text import TfidfVectorizer
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset, IterableDataset
-from torchtext import datasets
+
+# from torchtext import datasets
 from torchtext.vocab import vocab as vocab_builder
 from tqdm import tqdm
 from transformers import AutoTokenizer
+from datasets import load_dataset
 
-
-class TextIterData(IterableDataset):
-    def __init__(self, text_data_name, partition="train"):
-        super().__init__()
-        self.data_iter = getattr(
-            importlib.import_module("torchtext.datasets"), text_data_name
-        )(split=partition)
-
-    def __iter__(self):
-        for label, line in self.data_iter:
-            yield line, label
+DATASET_NAME = {
+    "AG_NEWS": "ag_news",
+    "YelpReviewFull": "yelp_review_full",
+    "YelpReviewPolarity": "yelp_polarity",
+    "YahooAnswers": "Brendan/yahoo_answers",
+}
 
 
 class TextData(Dataset):
     def __init__(self, text_data_name, partition="train"):
         super().__init__()
-        self.data_iter = getattr(
-            importlib.import_module("torchtext.datasets"), text_data_name
-        )(split=partition)
-        self.data = list(self.data_iter)
+        self.data = load_dataset(DATASET_NAME[text_data_name], split=partition)
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, index):
-        label, line = self.data[index]
+        label, line = self.data[index]["label"], self.data[index]["text"]
         return line, label
 
 
